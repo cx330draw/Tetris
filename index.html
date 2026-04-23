@@ -1,0 +1,729 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>三角洲俄羅斯方塊</title>
+    <style>
+      :root {
+        --cell-size: 32px;
+        --gap: 4px;
+        --cols: 12;
+        --rows: 20;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+        color: #f5f7ff;
+        background:
+          radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.35) 1px, transparent 2px) 0 0 / 36px 36px,
+          radial-gradient(circle at 80% 30%, rgba(255, 255, 255, 0.3) 1px, transparent 2px) 0 0 / 44px 44px,
+          linear-gradient(170deg, #151833 0%, #2b2950 60%, #3b2e59 100%);
+        display: grid;
+        place-items: center;
+        padding: 16px;
+      }
+
+      .game-shell {
+        width: min(1200px, 100%);
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 18px;
+        align-items: start;
+      }
+
+      .panel {
+        background: rgba(11, 14, 35, 0.62);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 16px;
+        padding: 16px;
+      }
+
+      .panel h2 {
+        margin: 0 0 12px;
+        font-size: 1.15rem;
+      }
+
+      .pieces {
+        display: grid;
+        gap: 10px;
+        max-height: 520px;
+        overflow-y: auto;
+        padding-right: 6px;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255,255,255,.35) rgba(255,255,255,.08);
+      }
+
+      .pieces::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .pieces::-webkit-scrollbar-track {
+        background: rgba(255,255,255,.08);
+        border-radius: 999px;
+      }
+
+      .pieces::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,.35);
+        border-radius: 999px;
+      }
+
+      .piece-btn {
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        padding: 10px;
+        cursor: grab;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .piece-btn.active {
+        outline: 2px solid #fff;
+        transform: translateX(2px);
+      }
+
+      .piece-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        text-align: left;
+      }
+
+      .piece-name { font-weight: 700; }
+      .piece-hint { opacity: 0.8; font-size: 0.8rem; }
+
+      .mini-preview {
+        --mini: 10px;
+        display: grid;
+        gap: 2px;
+        justify-content: end;
+      }
+
+      .mini-cell {
+        width: var(--mini);
+        height: var(--mini);
+        border-radius: 2px;
+      }
+
+      .board-area { position: relative; }
+
+      .score {
+        position: absolute;
+        top: 0;
+        right: 0;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        background: rgba(17, 23, 55, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        padding: 10px 14px;
+        font-size: 1.02rem;
+        font-weight: 700;
+      }
+
+      .board-tag {
+        color: #9fe8ff;
+      }
+
+      .board {
+        margin-top: 64px;
+        display: grid;
+        grid-template-columns: repeat(var(--cols), var(--cell-size));
+        grid-template-rows: repeat(var(--rows), var(--cell-size));
+        gap: var(--gap);
+        padding: 14px;
+        width: fit-content;
+        background: rgba(17, 15, 38, 0.45);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 18px;
+        user-select: none;
+      }
+
+      .cell {
+        width: var(--cell-size);
+        height: var(--cell-size);
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .cell.filled {
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.26);
+      }
+
+      .cell.preview-ok {
+        outline: 2px dashed rgba(133, 255, 168, 0.95);
+        outline-offset: -2px;
+        background: rgba(90, 247, 142, 0.22);
+      }
+
+      .cell.preview-bad {
+        outline: 2px dashed rgba(255, 125, 125, 0.95);
+        outline-offset: -2px;
+        background: rgba(255, 94, 94, 0.2);
+      }
+
+      .drag-ghost {
+        position: fixed;
+        pointer-events: none;
+        border: 2px dashed rgba(255, 255, 255, 0.9);
+        border-radius: 8px;
+        opacity: 0.75;
+        z-index: 99;
+      }
+
+      .tips {
+        margin-top: 14px;
+        color: rgba(239,243,255,.9);
+        font-size: .92rem;
+        line-height: 1.5;
+      }
+
+      .overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(7, 10, 24, 0.78);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 999;
+      }
+
+      .overlay.hidden {
+        display: none;
+      }
+
+      .dice-panel {
+        width: min(420px, calc(100vw - 32px));
+        background: linear-gradient(180deg, rgba(17, 23, 55, 0.96), rgba(29, 35, 79, 0.96));
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 22px;
+        padding: 24px 20px;
+        text-align: center;
+        box-shadow: 0 16px 50px rgba(0, 0, 0, 0.35);
+      }
+
+      .dice-panel h1 {
+        margin: 0 0 10px;
+        font-size: 1.5rem;
+      }
+
+      .dice-panel p {
+        margin: 8px 0;
+        line-height: 1.6;
+        color: rgba(240, 244, 255, 0.9);
+      }
+
+      .dice-box {
+        width: 132px;
+        height: 132px;
+        margin: 18px auto;
+        border-radius: 24px;
+        border: 2px solid rgba(255,255,255,0.22);
+        background: radial-gradient(circle at 35% 30%, #ffffff 0%, #dfe7ff 45%, #b1bce9 100%);
+        display: grid;
+        place-items: center;
+        box-shadow: inset 0 0 18px rgba(255,255,255,.5), 0 10px 28px rgba(0,0,0,.25);
+        padding: 16px;
+      }
+
+      .dice-box.rolling {
+        animation: dicePulse .12s linear infinite;
+      }
+
+      .dice-face {
+        width: 100%;
+        height: 100%;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        grid-template-rows: repeat(3, 1fr);
+        align-items: center;
+        justify-items: center;
+      }
+
+      .pip {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #1b244c;
+        opacity: 0;
+        transform: scale(0.5);
+      }
+
+      .pip.on {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      @keyframes dicePulse {
+        0% { transform: rotate(-5deg) scale(0.97); }
+        50% { transform: rotate(4deg) scale(1.03); }
+        100% { transform: rotate(-5deg) scale(0.97); }
+      }
+
+      .dice-btn {
+        border: none;
+        border-radius: 14px;
+        padding: 12px 20px;
+        font-size: 1rem;
+        font-weight: 800;
+        color: #fff;
+        background: linear-gradient(90deg, #4cc9f0, #4361ee);
+        cursor: pointer;
+      }
+
+      .dice-result {
+        min-height: 24px;
+        font-size: 1rem;
+        font-weight: 700;
+        color: #ffe58c;
+      }
+
+      @media (max-width: 980px) {
+        .game-shell { grid-template-columns: 1fr; }
+        .score {
+          position: static;
+          margin-bottom: 10px;
+        }
+        .board {
+          margin-top: 0;
+        }
+        .pieces {
+          max-height: 360px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="overlay" id="diceOverlay">
+      <div class="dice-panel">
+        <h1>開局先擲骰</h1>
+        <p>骰到幾，就使用第幾張盤面開始遊戲。</p>
+        <p>本次共有 6 張盤面可隨機開局。</p>
+        <div class="dice-box" id="diceBox">
+          <div class="dice-face" id="diceFace"></div>
+        </div>
+        <button class="dice-btn" id="rollDiceBtn" type="button">開始擲骰</button>
+        <p class="dice-result" id="diceResult"></p>
+      </div>
+    </div>
+
+    <main class="game-shell">
+      <section class="panel">
+        <h2>方塊選項（左側）</h2>
+        <div class="pieces" id="pieces"></div>
+        <p class="tips">
+          先點選方塊，再從左側方塊欄位按住拖拉到棋盤放置。<br />
+          左側方塊區可用滑鼠滾輪上下捲動。<br />
+          拖拉時會用虛線預覽落點，放開滑鼠即可填空。<br />
+          每消除一條橫線可得 5 分。
+        </p>
+      </section>
+
+      <section class="board-area">
+        <div class="score">
+          <span>得分：<span id="score">0</span></span>
+          <span class="board-tag">目前盤面：<span id="boardLabel">未決定</span></span>
+        </div>
+        <div class="board" id="board"></div>
+      </section>
+    </main>
+
+    <script>
+      const rows = 20;
+      const cols = 12;
+      const boardEl = document.getElementById("board");
+      const piecesEl = document.getElementById("pieces");
+      const scoreEl = document.getElementById("score");
+      const boardLabelEl = document.getElementById("boardLabel");
+      const diceOverlay = document.getElementById("diceOverlay");
+      const diceBox = document.getElementById("diceBox");
+      const diceFaceEl = document.getElementById("diceFace");
+      const diceResult = document.getElementById("diceResult");
+      const rollDiceBtn = document.getElementById("rollDiceBtn");
+
+      const pieceOptions = [
+        { name: "1x1", h: 1, w: 1, color: "#fff374" },
+        { name: "1x2", h: 1, w: 2, color: "#4CC9F0" },
+        { name: "2x1", h: 2, w: 1, color: "#4361EE" },
+        { name: "2x2", h: 2, w: 2, color: "#FFFFFF" },
+        { name: "1x3", h: 1, w: 3, color: "#5d825c" },
+        { name: "3x1", h: 3, w: 1, color: "#e7dd94" },
+        { name: "2x3", h: 2, w: 3, color: "#7209B7" },
+        { name: "3x2", h: 3, w: 2, color: "#B5179E" },
+        { name: "3x3", h: 3, w: 3, color: "#86fd96" },
+        { name: "1x4", h: 1, w: 4, color: "#393939" },
+        { name: "4x1", h: 4, w: 1, color: "#858585" },
+        { name: "2x4", h: 2, w: 4, color: "#5EEAD4" },
+        { name: "4x2", h: 4, w: 2, color: "#a683e1" },
+        { name: "3x4", h: 3, w: 4, color: "#F77F00" },
+        { name: "4x3", h: 4, w: 3, color: "#E63946" }
+      ];
+
+      const boardLayouts = [
+        {
+          name: "盤面 1",
+          cells: [
+            [19,0],[19,1],[19,2],[19,4],[19,5],[19,7],[19,8],[19,9],[19,10],
+            [18,0],[18,1],[18,2],[18,4],[18,5],[18,7],[18,8],[18,9],[18,10],[18,11],
+            [17,1],[17,2],[17,4],[17,5],[17,7],[17,8],[17,9],[17,10],[17,11],
+            [16,2],[16,4],[16,5],[16,7],[16,8],[16,9],[16,10],
+            [15,4],[15,5],[15,7],[15,8],[15,9],
+            [14,5],[14,7]
+          ]
+        },
+        {
+          name: "盤面 2",
+          cells: [
+            [19,0],[19,1],[19,2],[19,3],[19,5],[19,6],[19,8],[19,9],[19,10],[19,11],
+            [18,0],[18,1],[18,2],[18,3],[18,5],[18,6],[18,8],[18,9],[18,10],[18,11],
+            [17,1],[17,2],[17,3],[17,5],[17,6],[17,8],[17,9],[17,10],
+            [16,2],[16,3],[16,5],[16,6],[16,8],[16,9],
+            [15,3],[15,5],[15,6],[15,8],
+            [14,5],[14,6],
+            [13,5]
+          ]
+        },
+        {
+          name: "盤面 3",
+          cells: [
+            [19,1],[19,2],[19,3],[19,4],[19,6],[19,7],[19,8],[19,9],[19,10],
+            [18,0],[18,1],[18,2],[18,3],[18,4],[18,6],[18,7],[18,8],[18,9],[18,10],[18,11],
+            [17,0],[17,1],[17,2],[17,3],[17,4],[17,6],[17,7],[17,8],[17,9],[17,10],[17,11],
+            [16,2],[16,3],[16,4],[16,6],[16,7],[16,8],[16,9],
+            [15,3],[15,4],[15,6],[15,7],
+            [14,5]
+          ]
+        },
+        {
+          name: "盤面 4",
+          cells: [
+            [19,0],[19,2],[19,3],[19,5],[19,6],[19,8],[19,9],[19,11],
+            [18,0],[18,1],[18,2],[18,3],[18,5],[18,6],[18,8],[18,9],[18,10],[18,11],
+            [17,1],[17,2],[17,3],[17,4],[17,5],[17,6],[17,7],[17,8],[17,9],[17,10],
+            [16,2],[16,3],[16,4],[16,5],[16,6],[16,7],[16,8],[16,9],
+            [15,3],[15,4],[15,5],[15,6],[15,7],
+            [14,5],[14,6]
+          ]
+        },
+        {
+          name: "盤面 5",
+          cells: [
+            [19,0],[19,1],[19,2],[19,3],[19,8],[19,9],[19,10],[19,11],
+            [18,0],[18,1],[18,2],[18,3],[18,4],[18,7],[18,8],[18,9],[18,10],[18,11],
+            [17,1],[17,2],[17,3],[17,4],[17,5],[17,6],[17,7],[17,8],[17,9],[17,10],
+            [16,2],[16,3],[16,4],[16,5],[16,6],[16,7],[16,8],[16,9],
+            [15,3],[15,4],[15,5],[15,6],[15,7],
+            [14,5],[14,6]
+          ]
+        },
+        {
+          name: "盤面 6",
+          cells: [
+            [19,1],[19,2],[19,4],[19,5],[19,6],[19,8],[19,9],[19,10],
+            [18,0],[18,1],[18,2],[18,4],[18,5],[18,6],[18,8],[18,9],[18,10],[18,11],
+            [17,0],[17,1],[17,2],[17,3],[17,4],[17,5],[17,6],[17,7],[17,8],[17,9],[17,10],[17,11],
+            [16,2],[16,3],[16,4],[16,5],[16,6],[16,7],[16,8],[16,9],
+            [15,4],[15,5],[15,6],[15,7],
+            [14,5]
+          ]
+        }
+      ];
+
+      const dicePipMap = {
+        1: [4],
+        2: [0, 8],
+        3: [0, 4, 8],
+        4: [0, 2, 6, 8],
+        5: [0, 2, 4, 6, 8],
+        6: [0, 2, 3, 5, 6, 8]
+      };
+
+      const board = Array.from({ length: rows }, () => Array(cols).fill(null));
+      let selected = pieceOptions[0];
+      let score = 0;
+      let isDraggingFromPalette = false;
+      let hoverAnchor = null;
+      let dragGhost = null;
+      let dragPiece = null;
+      let gameStarted = false;
+      let currentBoardIndex = null;
+
+      function buildDiceFace() {
+        diceFaceEl.innerHTML = "";
+        for (let i = 0; i < 9; i++) {
+          const pip = document.createElement("span");
+          pip.className = "pip";
+          pip.dataset.index = String(i);
+          diceFaceEl.appendChild(pip);
+        }
+      }
+
+      function setDiceFace(value) {
+        const active = new Set(dicePipMap[value] || []);
+        diceFaceEl.querySelectorAll(".pip").forEach((pip, index) => {
+          pip.classList.toggle("on", active.has(index));
+        });
+      }
+
+      function resetBoardData() {
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            board[r][c] = null;
+          }
+        }
+      }
+
+      function initObstacles(layoutIndex) {
+        resetBoardData();
+        const layout = boardLayouts[layoutIndex];
+        for (const [r, c] of layout.cells) {
+          if (r >= 0 && r < rows && c >= 0 && c < cols) {
+            board[r][c] = { color: "#D96A86", obstacle: true };
+          }
+        }
+      }
+
+      function startGameWithBoard(layoutIndex) {
+        currentBoardIndex = layoutIndex;
+        score = 0;
+        scoreEl.textContent = "0";
+        boardLabelEl.textContent = boardLayouts[layoutIndex].name;
+        initObstacles(layoutIndex);
+        renderBoard();
+        gameStarted = true;
+      }
+
+      function createMiniPreview(piece) {
+        const mini = document.createElement("div");
+        mini.className = "mini-preview";
+        mini.style.gridTemplateColumns = `repeat(${piece.w}, 10px)`;
+        mini.style.gridTemplateRows = `repeat(${piece.h}, 10px)`;
+
+        for (let i = 0; i < piece.w * piece.h; i++) {
+          const dot = document.createElement("span");
+          dot.className = "mini-cell";
+          dot.style.background = piece.color;
+          mini.appendChild(dot);
+        }
+
+        return mini;
+      }
+
+      function selectPiece(piece, button) {
+        selected = piece;
+        document.querySelectorAll(".piece-btn").forEach((b) => b.classList.remove("active"));
+        if (button) button.classList.add("active");
+      }
+
+      function buildPieceButtons() {
+        pieceOptions.forEach((piece, index) => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = `piece-btn${index === 0 ? " active" : ""}`;
+
+          const meta = document.createElement("div");
+          meta.className = "piece-meta";
+          meta.innerHTML = `<span class="piece-name">${piece.name}</span><span class="piece-hint">點選後可拖拉放置</span>`;
+          btn.append(meta, createMiniPreview(piece));
+
+          btn.addEventListener("click", () => {
+            if (!gameStarted) return;
+            selectPiece(piece, btn);
+          });
+
+          btn.addEventListener("mousedown", (event) => {
+            if (!gameStarted) return;
+            event.preventDefault();
+            selectPiece(piece, btn);
+            startPaletteDrag(piece, event.clientX, event.clientY);
+          });
+
+          piecesEl.appendChild(btn);
+        });
+      }
+
+      function renderBoard() {
+        boardEl.innerHTML = "";
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const cell = document.createElement("div");
+            cell.className = "cell";
+            cell.dataset.row = String(r);
+            cell.dataset.col = String(c);
+            const value = board[r][c];
+            if (value) {
+              cell.classList.add("filled");
+              cell.style.background = value.color;
+            }
+            boardEl.appendChild(cell);
+          }
+        }
+      }
+
+      function cellsForPiece(startR, startC, piece) {
+        const cells = [];
+        for (let r = startR; r < startR + piece.h; r++) {
+          for (let c = startC; c < startC + piece.w; c++) {
+            cells.push([r, c]);
+          }
+        }
+        return cells;
+      }
+
+      function canPlace(startR, startC, piece) {
+        if (startR + piece.h > rows || startC + piece.w > cols) return false;
+        for (const [r, c] of cellsForPiece(startR, startC, piece)) {
+          if (board[r][c]) return false;
+        }
+        return true;
+      }
+
+      function clearPreview() {
+        boardEl.querySelectorAll(".preview-ok, .preview-bad").forEach((cell) => {
+          cell.classList.remove("preview-ok", "preview-bad");
+        });
+      }
+
+      function drawPreview(anchorR, anchorC, piece) {
+        clearPreview();
+        hoverAnchor = { r: anchorR, c: anchorC };
+        const ok = canPlace(anchorR, anchorC, piece);
+        const className = ok ? "preview-ok" : "preview-bad";
+
+        for (const [r, c] of cellsForPiece(anchorR, anchorC, piece)) {
+          if (r < 0 || c < 0 || r >= rows || c >= cols) continue;
+          const el = boardEl.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`);
+          if (el) el.classList.add(className);
+        }
+      }
+
+      function clearLines() {
+        let cleared = 0;
+        for (let r = rows - 1; r >= 0; r--) {
+          const full = board[r].every((cell) => cell !== null);
+          if (full) {
+            board.splice(r, 1);
+            board.unshift(Array(cols).fill(null));
+            cleared++;
+            r++;
+          }
+        }
+        if (cleared > 0) {
+          score += cleared * 5;
+          scoreEl.textContent = String(score);
+        }
+      }
+
+      function placePiece(anchorR, anchorC, piece) {
+        if (!canPlace(anchorR, anchorC, piece)) return false;
+        for (const [r, c] of cellsForPiece(anchorR, anchorC, piece)) {
+          board[r][c] = { color: piece.color, obstacle: false };
+        }
+        clearLines();
+        renderBoard();
+        return true;
+      }
+
+      function createGhost(piece) {
+        const ghost = document.createElement("div");
+        ghost.className = "drag-ghost";
+        const size = getComputedStyle(document.documentElement).getPropertyValue("--cell-size").trim();
+        ghost.style.width = `calc(${piece.w} * ${size} + ${(piece.w - 1) * 4}px)`;
+        ghost.style.height = `calc(${piece.h} * ${size} + ${(piece.h - 1) * 4}px)`;
+        ghost.style.background = `${piece.color}55`;
+        document.body.appendChild(ghost);
+        return ghost;
+      }
+
+      function moveGhost(x, y) {
+        if (!dragGhost) return;
+        dragGhost.style.left = `${x + 10}px`;
+        dragGhost.style.top = `${y + 10}px`;
+      }
+
+      function startPaletteDrag(piece, x, y) {
+        isDraggingFromPalette = true;
+        dragPiece = piece;
+        dragGhost = createGhost(piece);
+        moveGhost(x, y);
+      }
+
+      function getBoardPosFromPointer(x, y) {
+        const target = document.elementFromPoint(x, y);
+        const cell = target?.closest?.(".cell");
+        if (!cell || !boardEl.contains(cell)) return null;
+        return { r: Number(cell.dataset.row), c: Number(cell.dataset.col) };
+      }
+
+      document.addEventListener("mousemove", (event) => {
+        if (!gameStarted || !isDraggingFromPalette || !dragPiece) return;
+        moveGhost(event.clientX, event.clientY);
+
+        const pos = getBoardPosFromPointer(event.clientX, event.clientY);
+        if (pos) {
+          drawPreview(pos.r, pos.c, dragPiece);
+        } else {
+          hoverAnchor = null;
+          clearPreview();
+        }
+      });
+
+      document.addEventListener("mouseup", (event) => {
+        if (!gameStarted || !isDraggingFromPalette || !dragPiece) return;
+
+        const pos = getBoardPosFromPointer(event.clientX, event.clientY);
+        if (pos) placePiece(pos.r, pos.c, dragPiece);
+
+        if (dragGhost) dragGhost.remove();
+        dragGhost = null;
+        dragPiece = null;
+        isDraggingFromPalette = false;
+        hoverAnchor = null;
+        clearPreview();
+      });
+
+      function rollDiceAndStart() {
+        rollDiceBtn.disabled = true;
+        diceResult.textContent = "擲骰中...";
+        diceBox.classList.add("rolling");
+
+        let ticks = 0;
+        const timer = setInterval(() => {
+          setDiceFace(Math.floor(Math.random() * 6) + 1);
+          ticks++;
+
+          if (ticks >= 14) {
+            clearInterval(timer);
+            const result = Math.floor(Math.random() * 6) + 1;
+            diceBox.classList.remove("rolling");
+            setDiceFace(result);
+            diceResult.textContent = `本局使用第 ${result} 張盤面`;
+            startGameWithBoard(result - 1);
+
+            setTimeout(() => {
+              diceOverlay.classList.add("hidden");
+            }, 900);
+          }
+        }, 100);
+      }
+
+      rollDiceBtn.addEventListener("click", rollDiceAndStart);
+
+      buildDiceFace();
+      setDiceFace(1);
+      buildPieceButtons();
+      renderBoard();
+    </script>
+  </body>
+</html>
